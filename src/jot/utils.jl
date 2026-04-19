@@ -1,20 +1,25 @@
 using LinearAlgebra
+using SparseArrays
 
 function initialize_linear_system!(f; D, H, extra, params)
   N = length(f)
   # First row
-  L11 = I(N) + params["β"] * transpose(D) * D
-  L12 = I(N)
-  L13 = extra["dt"]
+  L11 = sparse(I(N) + params["β"] * transpose(D) * D)
+  L12 = sparse(I(N))
+  L13 = sparse(extra["dt"])
   # Second row
-  L21 = I(N)
-  L22 = I(N) + params["γ2"] * transpose(H) * H
-  L23 = transpose(D)
+  L21 = sparse(I(N))
+  L22 = sparse(I(N) + params["γ2"] * transpose(H) * H)
+  L23 = sparse(transpose(D))
   # Third row
-  L31 = D
-  L32 = D
-  L33 = extra["ddt"]
+  L31 = sparse(D)
+  L32 = sparse(D)
+  L33 = sparse(extra["ddt"])
   # Combine
+  if params["κ"] > 0
+    L11 .+= params["κ"] .* I(size(L11, 1))
+    L22 .+= params["κ"] .* I(size(L22, 1))
+  end
   L = Dict("A" => [L11 L12; L21 L22],
            "B" => [L13; L23],
            "C" => [L31 L32],
@@ -22,10 +27,7 @@ function initialize_linear_system!(f; D, H, extra, params)
   y1 = [f; f]
   y2 = D * f
   y = Dict("y1" => y1, "y2" => y2)
-  # if params["κ"] != 0
-  #   L .+= I(size(L, 1))
-  # end
-  F = factorize(L["A"])
+  F = factorize(sparse(Symmetric(L["A"])))
   L["CA1B"] = L["C"] * ( F \ L["B"] )
   return L, F, y
 end
@@ -34,8 +36,10 @@ end
 function update_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
-  solver.data_holder.L["D"] = dh.extra["ddt"] + 2 * dh.params["γ3"] * norm(solver.g)^2 * I(N - 1)
-  solver.data_holder.y["1"] = dh.f + dh.params["β"] * dh.extra["dt"] * (solver.t - solver.ρ / dh.params["β"])
+  pert = 2 * dh.params["γ3"] * norm(solver.g)^2 + dh.params["κ"]
+  solver.data_holder.L["D"] = dh.extra["ddt"] + pert * I(N - 1)
+  y_top = dh.f + dh.params["β"] * dh.extra["dt"] * (solver.t - solver.ρ / dh.params["β"])
+  solver.data_holder.y["y1"] = [y_top; dh.f]
 end
 
 
