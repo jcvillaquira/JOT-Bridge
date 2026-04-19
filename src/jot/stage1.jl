@@ -2,9 +2,11 @@
 module Stage1
 
 using LinearAlgebra
+using ProgressBars
+using Plots
 include("utils.jl")
 
-export DataHolder, ADMMSolver, solve_stage1!
+export DataHolder, ADMMSolver, solve_stage1!, visualize
 
 function φ(t, a)
   a_bar = sqrt(2 / a)
@@ -27,6 +29,8 @@ end
 
 
 function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
+  λ = params["β"] / params["γ1"]
+  @assert params["a"] < λ "a < β / γ₁ is required"
   N = length(f)
   D = zeros(N - 1, N)
   D[:, 1:end-1] = -I(N - 1)
@@ -35,7 +39,7 @@ function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
   L = Array{Float64,2}(undef, N + N + (N - 1), N + N + (N - 1))
   y = Vector{Float64}(undef, N + N + (N - 1))
   extra = Dict("ddt" => D * transpose(D), "dt" => transpose(D))
-  params["λ"] = params["β"] / params["γ1"]
+  params["λ"] = λ
   params["ν"] = params["λ"] / (params["λ"] - params["a"])
   params["ζ"] = sqrt(2 * params["a"]) / (params["λ"] - params["a"])
   initialize_linear_system!(f, L, y; D=D, H=H, extra=extra, params=params)
@@ -47,45 +51,58 @@ mutable struct ADMMSolver
   N::Int
   max_iterations::Int
   iterations::Int
+  data_holder::DataHolder
   v::Vector{Float64}
   w::Vector{Float64}
   g::Vector{Float64}
   t::Vector{Float64}
   ρ::Vector{Float64}
+  n::Vector{Float64}
 end
 
-function ADMMSolver(N, max_iterations)
+function ADMMSolver(N, data_holder, max_iterations)
   v = zeros(Float64, N)
   w = zeros(Float64, N)
-  g = zeros(Float64, N)
+  n = zeros(Float64, N)
+  g = zeros(Float64, N - 1)
   t = zeros(Float64, N - 1)
   ρ = zeros(Float64, N - 1)
-  ADMMSolver(N, max_iterations, 0, v, w, g, t, ρ)
+  ADMMSolver(N, max_iterations, 0, data_holder, v, w, g, t, ρ, n)
 end
 
-function perform_iteration!(solver, data_holder)
+function perform_iteration!(solver)
   N = solver.N
   # x subproblem
-  update_linear_system!(solver, data_holder)
-  x = data_holder.L \ data_holder.y
+  update_linear_system!(solver)
+  x = solver.data_holder.L \ solver.data_holder.y
   solver.v = x[1:N]
   solver.w = x[N+1:2N]
   solver.g = x[2N+1:end]
   # t subproblem
-  q = data_holder.D * solver.v + (solver.ρ / data_holder.params["β"])
+  q = solver.data_holder.D * solver.v + (solver.ρ / solver.data_holder.params["β"])
   for j in 1:length(solver.t)
-    solver.t[j] = min(1, max(data_holder.params["ν"] - data_holder.params["ζ"] / abs(q[j]))) * q[j]
+    solver.t[j] = min(1, max(solver.data_holder.params["ν"] - solver.data_holder.params["ζ"] / abs(q[j]))) * q[j]
   end
   # ρ update
-  solver.ρ .-= data_holder.params["β"] * (solver.t - data_holder.D * solver.v)
+  solver.ρ .-= solver.data_holder.params["β"] * (solver.t - solver.data_holder.D * solver.v)
   solver.iterations += 1
 end
 
 
-function solve_stage1!(solver, data_holder)
-  for _ in (solver.iterations+1):(solver.max_iterations)
-    perform_iteration!(solver, data_holder)
+function solve_stage1!(solver)
+  for _ in ProgressBar((solver.iterations+1):(solver.max_iterations))
+    perform_iteration!(solver)
   end
+  solver.n = solver.data_holder.extra["dt"] * solver.g
 end
+
+function visualize(sl)
+  pl = plot(sl.data_holder.f, label="Signal")
+  plot!(pl, sl.v, label="Jumps")
+  plot!(pl, sl.w, label="Trend")
+  plot!(pl, sl.n, label="Noise")
+  return pl
+end
+
 
 end
