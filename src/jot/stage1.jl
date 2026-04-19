@@ -22,28 +22,20 @@ mutable struct DataHolder
   params::Dict{String,Float64}
   D::Matrix{Float64}
   H::Matrix{Float64}
-  L::Matrix{Float64}
-  y::Vector{Float64}
+  L::Dict{String, Matrix{Float64}}
+  F::Factorization
+  y::Dict{String, Vector{Float64}}
   extra::Dict{String,Matrix{Float64}}
 end
 
 
 function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
-  λ = params["β"] / params["γ1"]
-  @assert params["a"] < λ "a < β / γ₁ is required"
+  update_params!(params)
   N = length(f)
-  D = zeros(N - 1, N)
-  D[:, 1:end-1] = -I(N - 1)
-  D[:, 2:end] += I(N - 1)
-  H = collect(Tridiagonal(fill(1.0, N - 1), [-1.0, fill(-2.0, N - 2)..., -1.0], fill(1.0, N - 1)))
-  L = Array{Float64,2}(undef, N + N + (N - 1), N + N + (N - 1))
-  y = Vector{Float64}(undef, N + N + (N - 1))
+  D, H = create_dh_input(N)
   extra = Dict("ddt" => D * transpose(D), "dt" => transpose(D))
-  params["λ"] = λ
-  params["ν"] = params["λ"] / (params["λ"] - params["a"])
-  params["ζ"] = sqrt(2 * params["a"]) / (params["λ"] - params["a"])
-  initialize_linear_system!(f, L, y; D=D, H=H, extra=extra, params=params)
-  return DataHolder(f, N, params, D, H, L, y, extra)
+  L, F, y = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
+  return DataHolder(f, N, params, D, H, L, F, y, extra)
 end
 
 
@@ -74,7 +66,7 @@ function perform_iteration!(solver)
   N = solver.N
   # x subproblem
   update_linear_system!(solver)
-  x = solver.data_holder.L \ solver.data_holder.y
+  x = solve_linear_system(solver)
   solver.v = x[1:N]
   solver.w = x[N+1:2N]
   solver.g = x[2N+1:end]
@@ -103,6 +95,5 @@ function visualize(sl)
   plot!(pl, sl.n, label="Noise")
   return pl
 end
-
 
 end

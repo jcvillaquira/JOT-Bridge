@@ -7,6 +7,11 @@ includet("src/jot/stage1.jl")
 Revise.track(Stage1, "src/jot/utils.jl")
 using .Stage1
 
+N = 1000
+f = rand(N) + 5 .* (1:N .> N / 2)
+params = Dict("γ1" => 0.1, "γ2" => 1.0, "γ3" => 1.0, "β" => 1.0, "a" => 0.5, "κ" => 1e-7)
+dh = DataHolder(f, params)
+
 @time begin
   N = 1000
   f = rand(N) + 5 .* (1:N .> N / 2)
