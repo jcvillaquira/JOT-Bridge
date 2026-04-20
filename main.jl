@@ -11,12 +11,10 @@ using .Stage1
 
 f = CSV.File(open("data/example.csv"), header=false).Column1
 params = Dict("γ1" => 2.5e-2, "γ2" => 1e3, "γ3" => 1e-5, "β" => 2.7, "a" => 22.2, "κ" => 1e-7)
-dh = DataHolder(f, params)
 
 @btime begin
   dh = DataHolder(f, params);
   sl = ADMMSolver(length(f), dh, 10)
   solve_stage1!(sl)
+  nothing
 end
-visualize(sl)
-

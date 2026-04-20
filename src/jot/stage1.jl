@@ -4,6 +4,7 @@ module Stage1
 using LinearAlgebra
 using ProgressBars
 using Plots
+using SparseArrays
 include("utils.jl")
 
 export DataHolder, ADMMSolver, solve_stage1!, visualize
@@ -20,12 +21,13 @@ mutable struct DataHolder
   f::Vector{Float64}
   N::Int
   params::Dict{String,Float64}
-  D::Matrix{Float64}
-  H::Matrix{Float64}
-  L::Dict{String, Matrix{Float64}}
+  D::SparseMatrixCSC
+  H::SparseMatrixCSC
+  L::Dict{String, SparseMatrixCSC}
+  CA1B::Matrix{Float64}
   F::Factorization
   y::Dict{String, Vector{Float64}}
-  extra::Dict{String,Matrix{Float64}}
+  extra::Dict{String,SparseMatrixCSC}
 end
 
 
@@ -34,8 +36,8 @@ function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
   N = length(f)
   D, H = create_dh_input(N)
   extra = Dict("ddt" => D * transpose(D), "dt" => transpose(D))
-  L, F, y = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
-  return DataHolder(f, N, params, D, H, L, F, y, extra)
+  L, F, CA1B, y = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
+  return DataHolder(f, N, params, D, H, L, CA1B, F, y, extra)
 end
 
 
