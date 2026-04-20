@@ -16,11 +16,14 @@ function initialize_linear_system!(f; D, H, extra, params)
   L31 = D
   L32 = D
   L33 = extra["ddt"]
+  pert = 2.0 * params["γ3"]
   # Combine
   if params["κ"] > 0
     L11 .+= params["κ"] .* I_N
     L22 .+= params["κ"] .* I_N
+    pert += params["κ"]
   end
+  L33 += pert .* I(N-1)
   L = Dict("A" => [L11 L12; L21 L22],
            "B" => [L13; L23],
            "C" => [L31 L32],
@@ -54,7 +57,7 @@ end
 function update_params!(params)
   λ = params["β"] / params["γ1"]
   @assert params["a"] < λ "a < β / γ₁ is required"
-  params["λ"] = λ
+  params["λ"] = 2λ
   params["ν"] = params["λ"] / (params["λ"] - params["a"])
   params["ζ"] = sqrt(2 * params["a"]) / (params["λ"] - params["a"])
 end
@@ -62,5 +65,7 @@ end
 function create_dh_input(N)
   D = spdiagm(N - 1, N, 0 => fill(-1.0, N - 1), 1 => fill(1.0, N - 1))
   H = spdiagm(0 => fill(-2.0, N), -1 => fill(1.0, N-1), 1 => fill(1.0, N-1))
+  H[1, 1] = -1.0
+  H[end, end] = -1.0
   return D, H
 end

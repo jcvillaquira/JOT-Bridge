@@ -5,6 +5,8 @@ using LinearAlgebra
 using ProgressBars
 using Plots
 using SparseArrays
+using Statistics
+
 include("utils.jl")
 
 export DataHolder, ADMMSolver, solve_stage1!, visualize
@@ -67,7 +69,6 @@ end
 function perform_iteration!(solver)
   N = solver.N
   # x subproblem
-  update_linear_system!(solver)
   x = solve_linear_system(solver)
   solver.v = x[1:N]
   solver.w = x[N+1:2N]
@@ -75,10 +76,12 @@ function perform_iteration!(solver)
   # t subproblem
   q = solver.data_holder.D * solver.v + (solver.ρ / solver.data_holder.params["β"])
   for j in 1:length(solver.t)
-    solver.t[j] = min(1, max(solver.data_holder.params["ν"] - solver.data_holder.params["ζ"] / abs(q[j]))) * q[j]
+    t_max = max(solver.data_holder.params["ν"] - solver.data_holder.params["ζ"] / abs(q[j]), 0.0)
+    solver.t[j] = min(1, t_max) * q[j]
   end
   # ρ update
   solver.ρ .-= solver.data_holder.params["β"] * (solver.t - solver.data_holder.D * solver.v)
+  update_linear_system!(solver)
   solver.iterations += 1
 end
 
@@ -90,11 +93,15 @@ function solve_stage1!(solver)
   solver.n = solver.data_holder.extra["dt"] * solver.g
 end
 
-function visualize(sl)
+function visualize(sl; shift = false)
+  val_shift = 0.0
+  if shift
+    val_shift = mean(sl.v) - mean(sl.data_holder.f)
+  end
   pl = plot(sl.data_holder.f, label="Signal")
-  plot!(pl, sl.v, label="Jumps")
-  plot!(pl, sl.w, label="Trend")
-  plot!(pl, sl.n, label="Noise")
+  plot!(pl, sl.v .- val_shift, label="Jumps (v)")
+  plot!(pl, sl.w .+ val_shift, label="Trend (w)")
+  plot!(pl, sl.n, label="Noise (n)")
   return pl
 end
 
