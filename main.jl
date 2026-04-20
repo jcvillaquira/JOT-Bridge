@@ -16,7 +16,7 @@ f = CSV.File(open("data/example.csv"), header=false).Column1
 params = Dict("γ1" => 0.05, "γ2" => 1000.0, "γ3" => 0.05, "β" => 12.5, "a" => 50.0, "κ" => 1e-7)
 
 dh = DataHolder(f, params);
-sl = ADMMSolver(length(f), dh, 500);
-solve_stage1!(sl);
-visualize(sl; shift = true)
+sl = ADMMSolver(length(f), dh, 1500);
+@time solve_stage1!(sl)
+visualize(sl)
 

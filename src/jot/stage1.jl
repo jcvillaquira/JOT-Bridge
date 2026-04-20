@@ -6,6 +6,7 @@ using ProgressBars
 using Plots
 using SparseArrays
 using Statistics
+using LinearMaps
 
 include("utils.jl")
 
@@ -26,7 +27,6 @@ mutable struct DataHolder
   D::SparseMatrixCSC
   H::SparseMatrixCSC
   L::Dict{String, SparseMatrixCSC}
-  CA1B::Matrix{Float64}
   F::Factorization
   y::Dict{String, Vector{Float64}}
   extra::Dict{String,SparseMatrixCSC}
@@ -38,8 +38,8 @@ function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
   N = length(f)
   D, H = create_dh_input(N)
   extra = Dict("ddt" => D * transpose(D), "dt" => transpose(D))
-  L, F, CA1B, y = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
-  return DataHolder(f, N, params, D, H, L, CA1B, F, y, extra)
+  L, F, y = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
+  return DataHolder(f, N, params, D, H, L, F, y, extra)
 end
 
 
@@ -69,13 +69,10 @@ end
 function perform_iteration!(solver)
   N = solver.N
   # x subproblem
-  x = solve_linear_system(solver)
-  solver.v = x[1:N]
-  solver.w = x[N+1:2N]
-  solver.g = x[2N+1:end]
+  schur_solve_linear_system!(solver)
   # t subproblem
   q = solver.data_holder.D * solver.v + (solver.ρ / solver.data_holder.params["β"])
-  for j in 1:length(solver.t)
+  for j in eachindex(solver.t)
     t_max = max(solver.data_holder.params["ν"] - solver.data_holder.params["ζ"] / abs(q[j]), 0.0)
     solver.t[j] = min(1, t_max) * q[j]
   end
@@ -87,7 +84,8 @@ end
 
 
 function solve_stage1!(solver)
-  for _ in ProgressBar((solver.iterations+1):(solver.max_iterations))
+  # for _ in ProgressBar((solver.iterations+1):(solver.max_iterations))
+  for _ in (solver.iterations+1):(solver.max_iterations)
     perform_iteration!(solver)
   end
   solver.n = solver.data_holder.extra["dt"] * solver.g

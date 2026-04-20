@@ -1,5 +1,7 @@
 using LinearAlgebra
 using SparseArrays
+using IterativeSolvers
+using LinearMaps
 
 function initialize_linear_system!(f; D, H, extra, params)
   N = length(f)
@@ -32,7 +34,7 @@ function initialize_linear_system!(f; D, H, extra, params)
   y2 = D * f
   y = Dict("y1" => y1, "y2" => y2)
   F = factorize(Symmetric(L["A"]))
-  return L, F, L["C"] * ( F \ L["B"] ), y
+  return L, F, y
 end
 
 
@@ -45,12 +47,28 @@ function update_linear_system!(solver)
 end
 
 
-function solve_linear_system(solver)
+function direct_solve_linear_system!(solver)
   dh = solver.data_holder
+  N = dh.N
+  L = [dh.L["A"] dh.L["B"]; dh.L["C"] dh.L["D"]]
+  y = [dh.y["y1"]; dh.y["y2"]]
+  x = L \ y
+  solver.v = x[1:N]
+  solver.w = x[N+1:2N]
+  solver.g = x[2N+1:end]
+end
+
+
+function schur_solve_linear_system!(solver)
+  dh = solver.data_holder
+  N = dh.N
   y_temp = dh.y["y2"] - dh.L["C"] * ( dh.F \ dh.y["y1"] )
-  x2 = ( dh.L["D"] - dh.CA1B ) \ y_temp
-  x1 = dh.F \ ( dh.y["y1"] - dh.L["B"] * x2 )
-  return [x1; x2]
+  CA1B = x -> dh.L["C"] * ( dh.F \ ( dh.L["B"] * x ) )
+  S = LinearMap(x -> dh.L["D"] * x - CA1B(x), N - 1)
+  solver.g = gmres(S, y_temp; log = false, reltol = 1e-3)
+  x1 = dh.F \ ( dh.y["y1"] - dh.L["B"] * solver.g )
+  solver.v = x1[1:N]
+  solver.w = x1[N+1:2N]
 end
 
 
