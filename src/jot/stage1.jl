@@ -72,10 +72,9 @@ function perform_iteration!(solver)
   schur_solve_linear_system!(solver)
   # t subproblem
   q = solver.data_holder.D * solver.v + (solver.ρ / solver.data_holder.params["β"])
-  for j in eachindex(solver.t)
-    t_max = max(solver.data_holder.params["ν"] - solver.data_holder.params["ζ"] / abs(q[j]), 0.0)
-    solver.t[j] = min(1, t_max) * q[j]
-  end
+  solver.t .= solver.data_holder.params["ν"] .- solver.data_holder.params["ζ"] ./ abs.(q)
+  solver.t .= min.(max.(solver.t, 0.0), 1.0)
+  solver.t .*= q
   # ρ update
   solver.ρ .-= solver.data_holder.params["β"] * (solver.t - solver.data_holder.D * solver.v)
   update_linear_system!(solver)
@@ -84,11 +83,11 @@ end
 
 
 function solve_stage1!(solver)
-  # for _ in ProgressBar((solver.iterations+1):(solver.max_iterations))
   for _ in (solver.iterations+1):(solver.max_iterations)
     perform_iteration!(solver)
   end
   solver.n = solver.data_holder.extra["dt"] * solver.g
+  nothing
 end
 
 function visualize(sl; shift = false)
