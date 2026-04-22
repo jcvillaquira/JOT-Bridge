@@ -29,6 +29,7 @@ mutable struct DataHolder
   L::Dict{String, SparseMatrixCSC}
   F::Factorization
   y::Dict{String, Vector{Float64}}
+  pert::Float64
   extra::Dict{String,SparseMatrixCSC}
 end
 
@@ -38,8 +39,8 @@ function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
   N = length(f)
   D, H = create_dh_input(N)
   extra = Dict("ddt" => D * transpose(D), "dt" => transpose(D))
-  L, F, y = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
-  return DataHolder(f, N, params, D, H, L, F, y, extra)
+  L, F, y, pert = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
+  return DataHolder(f, N, params, D, H, L, F, y, pert, extra)
 end
 
 
@@ -57,11 +58,11 @@ mutable struct ADMMSolver
 end
 
 function ADMMSolver(N, data_holder, max_iterations)
-  v = zeros(Float64, N)
-  w = zeros(Float64, N)
-  n = zeros(Float64, N)
-  g = zeros(Float64, N - 1)
-  t = zeros(Float64, N - 1)
+  v = Vector{Float64}(undef, N)
+  w = similar(v)
+  n = similar(v)
+  g = Vector{Float64}(undef, N - 1)
+  t = similar(g)
   ρ = zeros(Float64, N - 1)
   ADMMSolver(N, max_iterations, 0, data_holder, v, w, g, t, ρ, n)
 end

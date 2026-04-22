@@ -25,7 +25,6 @@ function initialize_linear_system!(f; D, H, extra, params)
     L22 .+= params["κ"] .* I_N
     pert += params["κ"]
   end
-  L33 += pert .* I(N-1)
   L = Dict("A" => [L11 L12; L21 L22],
            "B" => [L13; L23],
            "C" => [L31 L32],
@@ -34,15 +33,14 @@ function initialize_linear_system!(f; D, H, extra, params)
   y2 = D * f
   y = Dict("y1" => y1, "y2" => y2)
   F = factorize(Symmetric(L["A"]))
-  return L, F, y
+  return L, F, y, pert
 end
 
 
 function update_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
-  pert = 2 * dh.params["γ3"] * norm(solver.g)^2 + dh.params["κ"]
-  solver.data_holder.L["D"] = dh.extra["ddt"] + pert * I(N - 1)
+  dh.pert = 2 * dh.params["γ3"] * norm(solver.g)^2 + dh.params["κ"]
   solver.data_holder.y["y1"][1:N] = dh.f + dh.extra["dt"] * (dh.params["β"] * solver.t - solver.ρ )
 end
 
@@ -64,7 +62,7 @@ function schur_solve_linear_system!(solver)
   N = dh.N
   y_temp = dh.y["y2"] - dh.L["C"] * ( dh.F \ dh.y["y1"] )
   CA1B = x -> dh.L["C"] * ( dh.F \ ( dh.L["B"] * x ) )
-  S = LinearMap(x -> dh.L["D"] * x - CA1B(x), N - 1)
+  S = LinearMap(x -> ( dh.L["D"] * x ) .+ ( dh.pert .* x .- CA1B(x) ), N - 1)
   solver.g = minres(S, y_temp; log = false, reltol = 1e-3)
   x1 = dh.F \ ( dh.y["y1"] - dh.L["B"] * solver.g )
   solver.v = x1[1:N]
