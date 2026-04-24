@@ -3,10 +3,10 @@ using SparseArrays
 using IterativeSolvers
 using LinearMaps
 
-function initialize_linear_system!(f; D, H, extra, params)
+function initialize_linear_system!(f::Vector; D, H, extra, params)
   N = length(f)
   # First row
-  I_N = spdiagm(N, N, 0 => fill(1.0, N))
+  I_N = spdiagm(N, N, 0 => fill(one(eltype(f)), N))
   L11 = I_N + params["β"] * transpose(D) * D
   L12 = I_N
   L13 = extra["dt"]
@@ -31,9 +31,8 @@ function initialize_linear_system!(f; D, H, extra, params)
            "D" => L33)
   y1 = [f; f]
   y2 = D * f
-  y = Dict("y1" => y1, "y2" => y2)
   F = factorize(Symmetric(L["A"]))
-  return L, F, y, pert
+  return L, F, y1, y2, pert
 end
 
 
@@ -41,15 +40,18 @@ function update_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
   dh.pert = 2 * dh.params["γ3"] * norm(solver.g)^2 + dh.params["κ"]
-  solver.data_holder.y["y1"][1:N] = dh.f + dh.extra["dt"] * (dh.params["β"] * solver.t - solver.ρ )
+  solver.data_holder.y1[1:N] = dh.f + dh.extra["dt"] * (dh.params["β"] * solver.t - solver.ρ )
 end
 
 
 function direct_solve_linear_system!(solver)
+  """
+  Solve Lx=y by forming L and doing L\\y (deprecated)
+  """
   dh = solver.data_holder
   N = dh.N
   L = [dh.L["A"] dh.L["B"]; dh.L["C"] dh.L["D"]]
-  y = [dh.y["y1"]; dh.y["y2"]]
+  y = [dh.y1; dh.y2]
   x = L \ y
   solver.v = x[1:N]
   solver.w = x[N+1:2N]
@@ -60,11 +62,11 @@ end
 function schur_solve_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
-  y_temp = dh.y["y2"] - dh.L["C"] * ( dh.F \ dh.y["y1"] )
+  y_temp = dh.y2 - dh.L["C"] * ( dh.F \ dh.y1 )
   CA1B = x -> dh.L["C"] * ( dh.F \ ( dh.L["B"] * x ) )
   S = LinearMap(x -> ( dh.L["D"] * x ) .+ ( dh.pert .* x .- CA1B(x) ), N - 1)
   solver.g = minres(S, y_temp; log = false, reltol = 1e-3)
-  x1 = dh.F \ ( dh.y["y1"] - dh.L["B"] * solver.g )
+  x1 = dh.F \ ( dh.y1 - dh.L["B"] * solver.g )
   solver.v = x1[1:N]
   solver.w = x1[N+1:2N]
 end

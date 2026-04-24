@@ -1,4 +1,3 @@
-
 module Stage1
 
 using LinearAlgebra
@@ -12,62 +11,63 @@ include("utils.jl")
 
 export DataHolder, ADMMSolver, solve_stage1!, visualize
 
-function φ(t, a)
+function φ(t::T, a) where T
   a_bar = sqrt(2 / a)
   if t < a_bar
     return -(a / 2) * t^2 + sqrt(2 * a) * t
   end
-  return 1
+  return one(T)
 end
 
-mutable struct DataHolder
-  f::Vector{Float64}
+mutable struct DataHolder{T}
+  f::Vector{T}
   N::Int
   params::Dict{String,Float64}
-  D::SparseMatrixCSC
-  H::SparseMatrixCSC
-  L::Dict{String, SparseMatrixCSC}
+  D::SparseMatrixCSC{T}
+  H::SparseMatrixCSC{T}
+  L::Dict{String, SparseMatrixCSC{T}}
   F::Factorization
-  y::Dict{String, Vector{Float64}}
-  pert::Float64
-  extra::Dict{String,SparseMatrixCSC}
+  y1::Vector{T}
+  y2::Vector{T}
+  pert::T
+  extra::Dict{String,SparseMatrixCSC{T}}
 end
 
 
-function DataHolder(f::Vector{Float64}, params::Dict{String,Float64})
+function DataHolder(f::Vector{T}, params::Dict{String,Float64}) where T
   update_params!(params)
   N = length(f)
   D, H = create_dh_input(N)
   extra = Dict("ddt" => D * transpose(D), "dt" => transpose(D))
-  L, F, y, pert = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
-  return DataHolder(f, N, params, D, H, L, F, y, pert, extra)
+  L, F, y1, y2, pert = initialize_linear_system!(f; D=D, H=H, extra=extra, params=params)
+  return DataHolder{T}(f, N, params, D, H, L, F, y1, y2, pert, extra)
 end
 
 
-mutable struct ADMMSolver
+mutable struct ADMMSolver{T}
   N::Int
   max_iterations::Int
   iterations::Int
-  data_holder::DataHolder
-  v::Vector{Float64}
-  w::Vector{Float64}
-  g::Vector{Float64}
-  t::Vector{Float64}
-  ρ::Vector{Float64}
-  n::Vector{Float64}
+  data_holder::DataHolder{T}
+  v::Vector{T}
+  w::Vector{T}
+  g::Vector{T}
+  t::Vector{T}
+  ρ::Vector{T}
+  n::Vector{T}
 end
 
-function ADMMSolver(N, data_holder, max_iterations)
-  v = Vector{Float64}(undef, N)
+function ADMMSolver(N::Int, data_holder::DataHolder{T}, max_iterations::Int) where T
+  v = similar(data_holder.f)
   w = similar(v)
   n = similar(v)
-  g = Vector{Float64}(undef, N - 1)
+  g = similar(data_holder.f, N - 1)
   t = similar(g)
-  ρ = zeros(Float64, N - 1)
-  ADMMSolver(N, max_iterations, 0, data_holder, v, w, g, t, ρ, n)
+  ρ = zeros(T, N - 1)
+  return ADMMSolver{T}(N, max_iterations, 0, data_holder, v, w, g, t, ρ, n)
 end
 
-function perform_iteration!(solver)
+function perform_iteration!(solver::ADMMSolver)
   N = solver.N
   # x subproblem
   schur_solve_linear_system!(solver)
@@ -83,7 +83,7 @@ function perform_iteration!(solver)
 end
 
 
-function solve_stage1!(solver)
+function solve_stage1!(solver::ADMMSolver)
   for _ in (solver.iterations+1):(solver.max_iterations)
     perform_iteration!(solver)
   end
@@ -91,7 +91,7 @@ function solve_stage1!(solver)
   nothing
 end
 
-function visualize(sl; shift = false)
+function visualize(sl::ADMMSolver; shift = false)
   val_shift = 0.0
   if shift
     val_shift = mean(sl.v) - mean(sl.data_holder.f)
