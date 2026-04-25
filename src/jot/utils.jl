@@ -63,8 +63,9 @@ function schur_solve_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
   y_temp = dh.y2 - dh.L["C"] * ( dh.F \ dh.y1 )
-  CA1B = x -> dh.L["C"] * ( dh.F \ ( dh.L["B"] * x ) )
-  S = LinearMap(x -> ( dh.L["D"] * x ) .+ ( dh.pert .* x .- CA1B(x) ), N - 1)
+  # CA1B = x -> dh.L["C"] * ( dh.F \ ( dh.L["B"] * x ) )
+  # S = LinearMap(x -> ( dh.L["D"] * x ) .+ ( dh.pert .* x .- CA1B(x) ), N - 1)
+  S = LinearMap(solver.dmca1b, N - 1; ismutating = true)
   solver.g = minres(S, y_temp; log = false, reltol = 1e-3)
   x1 = dh.F \ ( dh.y1 - dh.L["B"] * solver.g )
   solver.v = x1[1:N]
