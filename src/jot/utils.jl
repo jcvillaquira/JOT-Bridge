@@ -40,7 +40,10 @@ function update_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
   dh.pert = 2 * dh.params["γ3"] * norm(solver.g)^2 + dh.params["κ"]
-  solver.data_holder.y1[1:N] = dh.f + dh.extra["dt"] * (dh.params["β"] * solver.t - solver.ρ )
+  solver.t .*= dh.params["β"]
+  solver.t .-= solver.ρ
+  mul!(solver.schur_op.v0, dh.extra["dt"], solver.t)
+  solver.data_holder.y1[1:N] .= dh.f .+ solver.schur_op.v0
 end
 
 
@@ -62,14 +65,20 @@ end
 function schur_solve_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
-  y_temp = dh.y2 - dh.L["C"] * ( dh.F \ dh.y1 )
-  # CA1B = x -> dh.L["C"] * ( dh.F \ ( dh.L["B"] * x ) )
-  # S = LinearMap(x -> ( dh.L["D"] * x ) .+ ( dh.pert .* x .- CA1B(x) ), N - 1)
-  S = LinearMap(solver.dmca1b, N - 1; ismutating = true)
-  solver.g = minres(S, y_temp; log = false, reltol = 1e-3)
-  x1 = dh.F \ ( dh.y1 - dh.L["B"] * solver.g )
-  solver.v = x1[1:N]
-  solver.w = x1[N+1:2N]
+  # solve ( D + pert - C inv(A) B ) x = y2 - C inv(A) y1 and stores in solver.g
+  ldiv!(solver.schur_op.v1_1, dh.F, dh.y1)
+  mul!(solver.schur_op.v2_1, dh.L["C"], solver.schur_op.v1_1)
+  solver.schur_op.v2_2 .= dh.y2 .- solver.schur_op.v2_1
+  S = LinearMap(solver.schur_op, N - 1; ismutating = true)
+  solver.g = minres(S, solver.schur_op.v2_2; log = false, reltol = 1e-3)
+  # solves x1 = A \ ( y1 - B g )
+  mul!(solver.schur_op.v1_1, dh.L["B"], solver.g)
+  solver.schur_op.v1_1 .*= -1.0
+  solver.schur_op.v1_1 .+= dh.y1
+  ldiv!(solver.schur_op.v1_2, dh.F, solver.schur_op.v1_1)
+  # updates v and w
+  solver.v = solver.schur_op.v1_2[1:N]
+  solver.w = solver.schur_op.v1_2[N+1:2N]
 end
 
 

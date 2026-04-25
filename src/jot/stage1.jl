@@ -44,33 +44,37 @@ function DataHolder(f::Vector{T}, params::Dict{String,Float64}) where T
 end
 
 
-mutable struct DmCA1B{T}
+mutable struct SchurComplement{T}
   data_holder::DataHolder{T}
-  dx::Vector{T}
-  bx::Vector{T}
-  a1bx::Vector{T}
+  v0::Vector{T}
+  v1_1::Vector{T}
+  v1_2::Vector{T}
+  v2_1::Vector{T}
+  v2_2::Vector{T}
 end
 
 
-function DmCA1B(data_holder::DataHolder{T}) where T
-  dx = similar(data_holder.f, data_holder.N - 1)
-  bx = similar(data_holder.f, 2 * data_holder.N)
-  a1bx = similar(data_holder.f, 2 * data_holder.N)
-  return DmCA1B{T}(data_holder, dx, bx, a1bx)
+function SchurComplement(data_holder::DataHolder{T}) where T
+  v0 = similar(data_holder.f, data_holder.N)
+  v1_1 = similar(v0, 2 * data_holder.N)
+  v1_2 = similar(v1_1)
+  v2_1 = similar(v0, data_holder.N - 1)
+  v2_2 = similar(v2_1)
+  return SchurComplement{T}(data_holder, v0, v1_1, v1_2, v2_1, v2_2)
 end
 
 
-function (op::DmCA1B{T})(y::Vector{T}, x::Vector{T}) where T
+function (op::SchurComplement{T})(y::Vector{T}, x::Vector{T}) where T
   # D * x
-  mul!(op.dx, op.data_holder.L["D"], x)
+  mul!(op.v2_1, op.data_holder.L["D"], x)
   # C * inv(A) * B * x
-  mul!(op.bx, op.data_holder.L["B"], x)
-  ldiv!(op.a1bx, op.data_holder.F, op.bx)
-  mul!(y, op.data_holder.L["C"], op.a1bx)
+  mul!(op.v1_1, op.data_holder.L["B"], x)
+  ldiv!(op.v1_2, op.data_holder.F, op.v1_1)
+  mul!(y, op.data_holder.L["C"], op.v1_2)
   y .*= -one(T)
   axpy!(op.data_holder.pert, x, y)
   # Substraction
-  y .+= op.dx
+  y .+= op.v2_1
   return y
 end
 
@@ -80,7 +84,7 @@ mutable struct ADMMSolver{T}
   max_iterations::Int
   iterations::Int
   data_holder::DataHolder{T}
-  dmca1b::DmCA1B{T}
+  schur_op::SchurComplement{T}
   v::Vector{T}
   w::Vector{T}
   g::Vector{T}
@@ -96,7 +100,7 @@ function ADMMSolver(N::Int, data_holder::DataHolder{T}, max_iterations::Int) whe
   g = similar(data_holder.f, N - 1)
   t = similar(g)
   ρ = zeros(T, N - 1)
-  return ADMMSolver{T}(N, max_iterations, 0, data_holder, DmCA1B(data_holder), v, w, g, t, ρ, n)
+  return ADMMSolver{T}(N, max_iterations, 0, data_holder, SchurComplement(data_holder), v, w, g, t, ρ, n)
 end
 
 function perform_iteration!(solver::ADMMSolver)
