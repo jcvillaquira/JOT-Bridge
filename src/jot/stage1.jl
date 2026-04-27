@@ -132,7 +132,7 @@ Perform a mutating iteration on a solver, and updates its fields.
 function perform_iteration!(solver::ADMMSolver)
   N = solver.N
   # x subproblem
-  schur_solve_linear_system!(solver)
+  direct_solve_linear_system!(solver)
   # t subproblem
   solver.q .= solver.Dv .+ ( solver.ρ ./ solver.data_holder.params["β"] )
   # solver.q .+= ( solver.ρ ./ solver.data_holder.params["β"] )

@@ -55,17 +55,18 @@ end
 
 
 """
-Solve Lx=y by forming L and doing L\\y (deprecated)
+Solve Lx=y by forming L and doing L\\y (for comparison purposes only)
 """
 function direct_solve_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
-  L = [dh.L["A"] dh.L["B"]; dh.L["C"] dh.L["D"]]
+  L = [dh.L["A"] dh.L["B"]; dh.L["C"] (dh.L["D"] .+ dh.pert .* I(N-1))]
   y = [dh.y1; dh.y2]
   x = L \ y
-  solver.v = x[1:N]
-  solver.w = x[N+1:2N]
-  solver.g = x[2N+1:end]
+  solver.schur_op.v1_2[1:N] .= x[1:N] # v
+  solver.schur_op.v1_2[N+1:2N] .= x[N+1:2N] # w
+  solver.schur_op.workspace.x .= x[2N+1:end] # g
+  mul!(solver.Dv, solver.data_holder.D, solver.v)
 end
 
 
