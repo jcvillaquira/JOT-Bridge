@@ -76,7 +76,8 @@ function schur_solve_linear_system!(solver)
   solver.schur_op.v1_1 .+= dh.y1
   ldiv!(solver.schur_op.v1_2, dh.F, solver.schur_op.v1_1)
   # updates v and w
-  solver.v .= solver.schur_op.v1_2[1:N]
+  mul!(solver.Dv, solver.data_holder.D, solver.schur_op.v1_2[1:N])
+  # solver.v .= solver.schur_op.v1_2[1:N]
 end
 
 

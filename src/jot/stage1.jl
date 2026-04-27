@@ -11,14 +11,6 @@ include("utils.jl")
 
 export DataHolder, ADMMSolver, solve_stage1!, visualize, DmCA1B
 
-function φ(t::T, a) where T
-  a_bar = sqrt(2 / a)
-  if t < a_bar
-    return -(a / 2) * t^2 + sqrt(2 * a) * t
-  end
-  return one(T)
-end
-
 mutable struct DataHolder{T}
   f::Vector{T}
   N::Int
@@ -87,7 +79,7 @@ mutable struct ADMMSolver{T}
   data_holder::DataHolder{T}
   schur_op::SchurComplement{T}
   DmCA1B::LinearMap
-  v::Vector{T}
+  Dv::Vector{T}
   t::Vector{T}
   q::Vector{T}
   ρ::Vector{T}
@@ -97,6 +89,9 @@ end
 function Base.getproperty(sl::ADMMSolver, att::Symbol)
   if att === :g
     return sl.schur_op.workspace.x
+  elseif att === :v
+    N = sl.data_holder.N
+    return sl.schur_op.v1_2[1:N]
   elseif att === :w
     N = sl.data_holder.N
     return sl.schur_op.v1_2[N+1:2N]
@@ -106,14 +101,14 @@ end
 
 
 function ADMMSolver(N::Int, data_holder::DataHolder{T}, max_iterations::Int) where T
-  v = similar(data_holder.f)
-  n = similar(v)
+  n = similar(data_holder.f)
   t = similar(data_holder.f, N - 1)
+  Dv = similar(t)
   q = similar(t)
   ρ = zeros(T, N - 1)
   schur_op = SchurComplement(data_holder)
   DmCA1B = LinearMap(schur_op, N - 1; ismutating = true, issymmetric = true)
-  return ADMMSolver{T}(N, max_iterations, 0, data_holder, schur_op, DmCA1B, v, t, q, ρ, n)
+  return ADMMSolver{T}(N, max_iterations, 0, data_holder, schur_op, DmCA1B, Dv, t, q, ρ, n)
 end
 
 function perform_iteration!(solver::ADMMSolver)
@@ -121,13 +116,13 @@ function perform_iteration!(solver::ADMMSolver)
   # x subproblem
   schur_solve_linear_system!(solver)
   # t subproblem
-  mul!(solver.q, solver.data_holder.D, solver.v)
-  solver.q .+= ( solver.ρ ./ solver.data_holder.params["β"] )
+  solver.q .= solver.Dv .+ ( solver.ρ ./ solver.data_holder.params["β"] )
+  # solver.q .+= ( solver.ρ ./ solver.data_holder.params["β"] )
   solver.t .= solver.data_holder.params["ν"] .- solver.data_holder.params["ζ"] ./ abs.(solver.q)
   solver.t .= min.(max.(solver.t, 0.0), 1.0)
   solver.t .*= solver.q
   # ρ update
-  solver.ρ .-= solver.data_holder.params["β"] .* (solver.t .- solver.data_holder.D * solver.v)
+  solver.ρ .-= solver.data_holder.params["β"] .* (solver.t .- solver.Dv)
   update_linear_system!(solver)
   solver.iterations += 1
 end
