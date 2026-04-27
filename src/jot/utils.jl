@@ -3,6 +3,10 @@ using SparseArrays
 using Krylov
 using LinearMaps
 
+
+"""
+Create the block matrix information for the ADMM iteration.
+"""
 function initialize_linear_system!(f::Vector; D, H, extra, params)
   N = length(f)
   # First row
@@ -36,6 +40,9 @@ function initialize_linear_system!(f::Vector; D, H, extra, params)
 end
 
 
+"""
+Update the right hand side of Lx=y, and the perturbation on the 2x2 block.
+"""
 function update_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
@@ -47,10 +54,10 @@ function update_linear_system!(solver)
 end
 
 
+"""
+Solve Lx=y by forming L and doing L\\y (deprecated)
+"""
 function direct_solve_linear_system!(solver)
-  """
-  Solve Lx=y by forming L and doing L\\y (deprecated)
-  """
   dh = solver.data_holder
   N = dh.N
   L = [dh.L["A"] dh.L["B"]; dh.L["C"] dh.L["D"]]
@@ -62,6 +69,9 @@ function direct_solve_linear_system!(solver)
 end
 
 
+"""
+In-place solve of the system Lx=y using the Schur complement and Krylov method.
+"""
 function schur_solve_linear_system!(solver)
   dh = solver.data_holder
   N = dh.N
@@ -77,7 +87,6 @@ function schur_solve_linear_system!(solver)
   ldiv!(solver.schur_op.v1_2, dh.F, solver.schur_op.v1_1)
   # updates v and w
   mul!(solver.Dv, solver.data_holder.D, solver.schur_op.v1_2[1:N])
-  # solver.v .= solver.schur_op.v1_2[1:N]
 end
 
 
@@ -89,6 +98,10 @@ function update_params!(params)
   params["ζ"] = sqrt(2 * params["a"]) / (params["λ"] - params["a"])
 end
 
+
+"""
+Create discrete differentiation operators.
+"""
 function create_dh_input(N)
   D = spdiagm(N - 1, N, 0 => fill(-1.0, N - 1), 1 => fill(1.0, N - 1))
   H = spdiagm(0 => fill(-2.0, N), -1 => fill(1.0, N-1), 1 => fill(1.0, N-1))
@@ -96,3 +109,5 @@ function create_dh_input(N)
   H[end, end] = -1.0
   return D, H
 end
+
+

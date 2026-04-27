@@ -11,6 +11,10 @@ include("utils.jl")
 
 export DataHolder, ADMMSolver, solve_stage1!, visualize, DmCA1B
 
+
+"""
+Represents a type containing the input data, parameters, operators D and H, and requires matrices for ADMM iteration.
+"""
 mutable struct DataHolder{T}
   f::Vector{T}
   N::Int
@@ -36,6 +40,9 @@ function DataHolder(f::Vector{T}, params::Dict{String,Float64}) where T
 end
 
 
+"""
+Type containing temporary vectors used for solving ( D - C inv(A) B ) x = y using Krylov methods.
+"""
 mutable struct SchurComplement{T}
   data_holder::DataHolder{T}
   workspace::MinresWorkspace{T, T, Vector{T}}
@@ -59,6 +66,9 @@ function SchurComplement(data_holder::DataHolder{T}) where T
 end
 
 
+"""
+Defines the mutating action of a SchurComplement object on a tuple (y, x) by setting y <- ( D - C inv(A) B ) x.
+"""
 function (op::SchurComplement{T})(y::Vector{T}, x::Vector{T}) where T
   # D * x
   mul!(op.v2_1, op.data_holder.L["D"], x)
@@ -72,6 +82,9 @@ function (op::SchurComplement{T})(y::Vector{T}, x::Vector{T}) where T
 end
 
 
+"""
+Type containing information for the ADMM iteration.
+"""
 mutable struct ADMMSolver{T}
   N::Int
   max_iterations::Int
@@ -85,6 +98,7 @@ mutable struct ADMMSolver{T}
   ρ::Vector{T}
   n::Vector{T}
 end
+
 
 function Base.getproperty(sl::ADMMSolver, att::Symbol)
   if att === :g
@@ -111,6 +125,10 @@ function ADMMSolver(N::Int, data_holder::DataHolder{T}, max_iterations::Int) whe
   return ADMMSolver{T}(N, max_iterations, 0, data_holder, schur_op, DmCA1B, Dv, t, q, ρ, n)
 end
 
+
+"""
+Perform a mutating iteration on a solver, and updates its fields.
+"""
 function perform_iteration!(solver::ADMMSolver)
   N = solver.N
   # x subproblem
@@ -128,6 +146,9 @@ function perform_iteration!(solver::ADMMSolver)
 end
 
 
+"""
+Run the solver a total of solve.max_iterations times.
+"""
 function solve_stage1!(solver::ADMMSolver)
   for _ in (solver.iterations+1):(solver.max_iterations)
     perform_iteration!(solver)
@@ -136,6 +157,10 @@ function solve_stage1!(solver::ADMMSolver)
   nothing
 end
 
+
+"""
+Plot the input data f, along with its jump, trend and noise components.
+"""
 function visualize(sl::ADMMSolver; shift = false)
   val_shift = 0.0
   if shift
@@ -147,5 +172,6 @@ function visualize(sl::ADMMSolver; shift = false)
   plot!(pl, sl.n, label="Noise (n)")
   return pl
 end
+
 
 end
