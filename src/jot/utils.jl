@@ -1,6 +1,6 @@
 using LinearAlgebra
 using SparseArrays
-using IterativeSolvers
+using Krylov
 using LinearMaps
 
 function initialize_linear_system!(f::Vector; D, H, extra, params)
@@ -69,16 +69,14 @@ function schur_solve_linear_system!(solver)
   ldiv!(solver.schur_op.v1_1, dh.F, dh.y1)
   mul!(solver.schur_op.v2_1, dh.L["C"], solver.schur_op.v1_1)
   solver.schur_op.v2_2 .= dh.y2 .- solver.schur_op.v2_1
-  S = LinearMap(solver.schur_op, N - 1; ismutating = true)
-  solver.g = minres(S, solver.schur_op.v2_2; log = false, reltol = 1e-3)
+  minres!(solver.schur_op.workspace, solver.DmCA1B, solver.schur_op.v2_2; rtol = 1e-3, λ = dh.pert)
   # solves x1 = A \ ( y1 - B g )
   mul!(solver.schur_op.v1_1, dh.L["B"], solver.g)
   solver.schur_op.v1_1 .*= -1.0
   solver.schur_op.v1_1 .+= dh.y1
   ldiv!(solver.schur_op.v1_2, dh.F, solver.schur_op.v1_1)
   # updates v and w
-  solver.v = solver.schur_op.v1_2[1:N]
-  solver.w = solver.schur_op.v1_2[N+1:2N]
+  solver.v .= solver.schur_op.v1_2[1:N]
 end
 
 

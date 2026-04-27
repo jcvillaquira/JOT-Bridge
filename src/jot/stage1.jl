@@ -46,6 +46,7 @@ end
 
 mutable struct SchurComplement{T}
   data_holder::DataHolder{T}
+  workspace::MinresWorkspace{T, T, Vector{T}}
   v0::Vector{T}
   v1_1::Vector{T}
   v1_2::Vector{T}
@@ -55,12 +56,14 @@ end
 
 
 function SchurComplement(data_holder::DataHolder{T}) where T
-  v0 = similar(data_holder.f, data_holder.N)
-  v1_1 = similar(v0, 2 * data_holder.N)
+  N = data_holder.N 
+  v0 = similar(data_holder.f, N)
+  v1_1 = similar(v0, 2 * N)
   v1_2 = similar(v1_1)
-  v2_1 = similar(v0, data_holder.N - 1)
+  v2_1 = similar(v0, N - 1)
   v2_2 = similar(v2_1)
-  return SchurComplement{T}(data_holder, v0, v1_1, v1_2, v2_1, v2_2)
+  workspace = MinresWorkspace(N - 1, N - 1, Vector{T}; window = 5)
+  return SchurComplement{T}(data_holder, workspace, v0, v1_1, v1_2, v2_1, v2_2)
 end
 
 
@@ -72,8 +75,6 @@ function (op::SchurComplement{T})(y::Vector{T}, x::Vector{T}) where T
   ldiv!(op.v1_2, op.data_holder.F, op.v1_1)
   mul!(y, op.data_holder.L["C"], op.v1_2)
   y .*= -one(T)
-  axpy!(op.data_holder.pert, x, y)
-  # Substraction
   y .+= op.v2_1
   return y
 end
@@ -85,22 +86,34 @@ mutable struct ADMMSolver{T}
   iterations::Int
   data_holder::DataHolder{T}
   schur_op::SchurComplement{T}
+  DmCA1B::LinearMap
   v::Vector{T}
-  w::Vector{T}
-  g::Vector{T}
   t::Vector{T}
+  q::Vector{T}
   ρ::Vector{T}
   n::Vector{T}
 end
 
+function Base.getproperty(sl::ADMMSolver, att::Symbol)
+  if att === :g
+    return sl.schur_op.workspace.x
+  elseif att === :w
+    N = sl.data_holder.N
+    return sl.schur_op.v1_2[N+1:2N]
+  end
+  return getfield(sl, att)
+end
+
+
 function ADMMSolver(N::Int, data_holder::DataHolder{T}, max_iterations::Int) where T
   v = similar(data_holder.f)
-  w = similar(v)
   n = similar(v)
-  g = similar(data_holder.f, N - 1)
-  t = similar(g)
+  t = similar(data_holder.f, N - 1)
+  q = similar(t)
   ρ = zeros(T, N - 1)
-  return ADMMSolver{T}(N, max_iterations, 0, data_holder, SchurComplement(data_holder), v, w, g, t, ρ, n)
+  schur_op = SchurComplement(data_holder)
+  DmCA1B = LinearMap(schur_op, N - 1; ismutating = true, issymmetric = true)
+  return ADMMSolver{T}(N, max_iterations, 0, data_holder, schur_op, DmCA1B, v, t, q, ρ, n)
 end
 
 function perform_iteration!(solver::ADMMSolver)
@@ -108,12 +121,13 @@ function perform_iteration!(solver::ADMMSolver)
   # x subproblem
   schur_solve_linear_system!(solver)
   # t subproblem
-  q = solver.data_holder.D * solver.v + (solver.ρ / solver.data_holder.params["β"])
-  solver.t .= solver.data_holder.params["ν"] .- solver.data_holder.params["ζ"] ./ abs.(q)
+  mul!(solver.q, solver.data_holder.D, solver.v)
+  solver.q .+= ( solver.ρ ./ solver.data_holder.params["β"] )
+  solver.t .= solver.data_holder.params["ν"] .- solver.data_holder.params["ζ"] ./ abs.(solver.q)
   solver.t .= min.(max.(solver.t, 0.0), 1.0)
-  solver.t .*= q
+  solver.t .*= solver.q
   # ρ update
-  solver.ρ .-= solver.data_holder.params["β"] * (solver.t - solver.data_holder.D * solver.v)
+  solver.ρ .-= solver.data_holder.params["β"] .* (solver.t .- solver.data_holder.D * solver.v)
   update_linear_system!(solver)
   solver.iterations += 1
 end
